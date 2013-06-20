@@ -1,0 +1,44 @@
+Find relevant topics using topic modeling with online lda
+---------------------------------------------------------
+
+1) Following "Online Learning for Latent Dirichlet
+Allocation" by Matthew D. Hoffman, David M. Blei, and Francis Bach, NIPS 2010.
+ - objective is to find topics for a large collection of texts
+    - in the paper: wikipedia 
+          - 3.3 million texts
+          - nbr of topics = 100
+          - python script continually downloads randomly 
+            chosen batches of articles: ~60000 articles/hour
+          - convergence after half of total articles 
+	  - paper presents results for 98000 articles
+	  - use vocabulary from gutenberg frequency list
+	    discarding words w. length <= 3 
+            -> resulted in vocabulary ~8000 words
+
+2) python open source available and working
+
+3) Application to logoscope
+
+   - objective would be to find relevant topics for the articles of
+     journals we track
+
+   - continually download randomly selected articles from these
+     journals
+
+   - use vocabulary obtained from wiktionary frequency list =
+     wortschatz lists
+
+   - result would be a list of 100 topics with most relevant words
+
+   - what next?
+
+   - given these documents, how to analyse an incoming text?
+         1) use topics as input to theme editor
+	 2) use the document as new incoming document 
+	    for onlineldavb - probably best
+         3) use/import topic model to mallet?
+
+4) need visualisation tool - make pie chart with topic distribution
+for new document
+	 
+

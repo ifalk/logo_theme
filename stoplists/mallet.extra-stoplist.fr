@@ -30,7 +30,6 @@ va
 un
 une
 te
-je
 me
 de
 qu
@@ -49,3 +48,12 @@ chacune
 avaient
 avez
 entre
+à
+aux
+ce
+ces
+cette
+avant
+après
+autres
+sera

@@ -10,18 +10,26 @@ SCRIPT_DIR=${LOGO_HOME}/VC/theme/bin
 GENRE_DIR=${LOGO_HOME}/VC/genre
 MALLET_HOME=/home/falk/mallet-2.0.7
 MALLET_CMD=${MALLET_HOME}/bin/mallet
-MALLET_STOPLIST=${MALLET_HOME}/stoplists/fr.txt
 
 lemonde_articles: ${SCRIPT_DIR}/make_mallet_input_texts.pl ${GENRE_DIR}/lemonde_articles.html
 	mkdir lemonde_articles ; \
 rm lemonde_articles/* ; \
 perl $< --dir_name=lemonde_articles ${GENRE_DIR}/lemonde_articles.html
 
-lemonde.mallet: lemonde_articles ${MALLET_STOPLIST} mallet.extra-stoplist.fr
-	${MALLET_CMD} import-dir --input lemonde_articles --output $@ --keep-sequence --stoplist-file ${MALLET_STOPLIST} --extra-stopwords mallet.extra-stoplist.fr --token-regex "[\pL\p{Mn}\p{Nd}\p{Pc}]+"
+SL_DIR=${LOGO_HOME}/VC/theme/stoplists
+stoplist: ${SCRIPT_DIR}/make_stoplist.pl ${SL_DIR}/snowball.stoplist ${SL_DIR}/okki.stoplist ${SL_DIR}/gma.stoplist ${SL_DIR}/textalyser.stoplist ${SL_DIR}/context.stoplist ${SL_DIR}/mallet.extra-stoplist.fr ${SL_DIR}/mallet.stoplist
+	perl $< ${SL_DIR}/snowball.stoplist ${SL_DIR}/okki.stoplist ${SL_DIR}/gma.stoplist ${SL_DIR}/textalyser.stoplist ${SL_DIR}/context.stoplist ${SL_DIR}/mallet.extra-stoplist.fr ${SL_DIR}/mallet.stoplist > $@
+
+lemonde.mallet: lemonde_articles stoplist
+	${MALLET_CMD} import-dir --input lemonde_articles --output $@ --keep-sequence --stoplist-file stoplist --token-regex "[\pL\p{Mn}\p{Nd}\p{Pc}]+"
 
 
-lemonde-state.gz lemonde_keys.txt lemonde_composition.txt: lemonde.mallet
-	${MALLET_CMD} train-topics  --input lemonde.mallet --num-topics 20 --optimize-interval 20 --output-state lemonde-state.gz --output-topic-keys lemonde_keys.txt --output-doc-topics lemonde_compostion.txt
+lemonde_20T-state.gz lemonde_20T-keys.txt lemonde_20T-composition.txt: lemonde.mallet
+	${MALLET_CMD} train-topics  --input lemonde.mallet --num-topics 20 --optimize-interval 20 --output-state lemonde_20T-state.gz --output-topic-keys lemonde_20T-keys.txt --output-doc-topics lemonde_20T-compostion.txt --num-top-words 100 --word-topic-counts-file lemonde_20T-word-topic-counts.txt --xml-topic-report lemonde_20T-xml-topic-report.xml --xml-topic-phrase-report lemonde_20T-xml-topic-phrase-report.xml
+
+lemonde_10T-state.gz lemonde_10T-keys.txt lemonde_10T-composition.txt: lemonde.mallet
+	${MALLET_CMD} train-topics  --input lemonde.mallet --num-topics 10 --optimize-interval 10 --output-state lemonde_10T-state.gz --output-topic-keys lemonde_10T-keys.txt --output-doc-topics lemonde_10T-compostion.txt --num-top-words 100 --word-topic-counts-file lemonde_10T-word-topic-counts.txt --xml-topic-report lemonde_10T-xml-topic-report.xml --xml-topic-phrase-report lemonde_10T-xml-topic-phrase-report.xml
+
+
 
 ### Makefile ends here

@@ -22,13 +22,17 @@ make_mallet_input_texts.pl
 
 =head1 USAGE
 
- perl make_mallet_input_texts.pl collection of links given as perl hashes
+ perl make_mallet_input_texts.pl --voc=vocabulary.pl collection of links given as perl hashes
 
 =head1 DESCRIPTION
 
 Creates a text collection to be used as input for the mallet topic modeler.
 
 Input is one or more perl hashes containing links where the texts should be retrieved from.
+
+The script attempts to extract only the text content of the articles. The text is split into words at white spaces. 
+
+Words which are not in a vocabulary given as argument are discarded.
 
 =head1 REQUIRED ARGUMENTS
 
@@ -52,6 +56,21 @@ The expected format is the following. The links should be the keys of the perl h
 
 The directory name where the text files should be stored.
 
+=item voc, the vocabulary (optional)
+
+A perl hash, with words as keys, containing those words which are considered most meaningful for the topic construction.
+
+Sample format:
+
+ $VAR1 = {
+          'sacs' => 1,
+          "f\x{e9}d\x{e9}rations" => 1,
+          'maystadt' => 1,
+          'bande' => 1,
+          'saisir' => 1,
+          "\x{e9}conomiste" => 1,
+          ....
+
 =back
 
 
@@ -59,12 +78,14 @@ The directory name where the text files should be stored.
 
 
 my %opts = (
-	    'dir_name' => '',
-	   );
+  'dir_name' => '',
+  'voc' => '',
+  );
 
 my @optkeys = (
-	       'dir_name=s',
-	      );
+  'dir_name=s',
+  'voc:s',
+  );
 
 unless (GetOptions (\%opts, @optkeys)) { pod2usage(2); };
 
@@ -72,6 +93,47 @@ unless (@ARGV) { pod2usage(20); };
 
 print STDERR "Options:\n";
 print STDERR Dumper(\%opts);
+
+my %voc;
+
+if ($opts{voc}) {
+  %voc = %{ do $opts{voc} };
+}
+
+sub filter_with_vocabulary {
+  my ($text) = @_;
+
+  my $filtered_text;
+
+  $text =~ s{[«»"']}{}xmsg;
+  $text =~ s{[\.\,!?(\)\][]]}{ }xmsg;
+  $text =~ s{’}{'}xmsg;
+
+  my @words = split(/\s+/, $text);
+	
+  my @filtered;
+  foreach my $w (@words) {
+    next if (length($w) <= 3);
+    
+    next if ($w =~ m{ \d+ }xms);
+
+    next unless ($voc{$w});
+    
+    $w = lc($w);
+    $w =~ s{ \A .+ ' }{}xms;
+    
+    next unless ($voc{$w});
+    
+    push(@filtered, $w);
+  }
+  
+  if (@filtered) {
+    $filtered_text = join(' ', @filtered);
+  }
+
+  return $filtered_text;
+}
+
 
 use XML::LibXML;
 use URI::URL;
@@ -86,408 +148,601 @@ $lwp_ua->agent('Mozilla/6.0 (compatible;)');
 my $xpc = XML::LibXML::XPathContext->new;
 
 my %GETART_4_JOURNAL = (
-  'lemonde' => sub {
-    my ($link) = @_;
+  # 'lemonde' => sub {
+  #   my ($link) = @_;
     
-    my $text_content = [];
+  #   my $text_content = [];
     
-    my $dom;
-    eval { $dom = XML::LibXML->load_html(
-  	     location => $link,
-  	     # encoding => 'iso-8859-1',
-  	     recover => 2,
-  	     suppress_warnings => 1,
-  	     )
-    };
-    if ($@) {
-      warn $@;
-      return $text_content;
-    }
+  #   my $dom;
+  #   eval { $dom = XML::LibXML->load_html(
+  # 	     location => $link,
+  # 	     # encoding => 'iso-8859-1',
+  # 	     recover => 2,
+  # 	     suppress_warnings => 1,
+  # 	     )
+  #   };
+  #   if ($@) {
+  #     warn $@;
+  #     return $text_content;
+  #   }
 
-    unless ($dom) {
-      print STDERR "Unsuccessful parse\n";
-      return $text_content;
-    }
+  #   unless ($dom) {
+  #     print STDERR "Unsuccessful parse\n";
+  #     return $text_content;
+  #   }
 
-    my @article_nodes = $dom->findnodes('//article');
-    my @blog_nodes = $dom->findnodes('//div[starts-with(@id, "post")]');
+  #   my @article_nodes = $dom->findnodes('//article');
+  #   my @blog_nodes = $dom->findnodes('//div[starts-with(@id, "post")]');
 
-    push(@article_nodes, @blog_nodes);
+  #   push(@article_nodes, @blog_nodes);
 
-    if (@article_nodes) {
-      my @todo = grep { $_->nodeType() == 1 } $article_nodes[0]->childNodes();
+  #   if (@article_nodes) {
+  #     my @todo = grep { $_->nodeType() == 1 } $article_nodes[0]->childNodes();
 
-      while (@todo) {
-	my $cur = shift(@todo);
+  #     while (@todo) {
+  # 	my $cur = shift(@todo);
 
 
-	my $name = $cur->localname();
+  # 	my $name = $cur->localname();
 
-	if ($link =~ m{ turquie-la-police }xms) {
-	  if ($name eq 'p') {
-	    if (my $first = $cur->firstChild()) {
-	      next if ($first->nodeType() == 1 and
-		       $first->localname() eq 'section');
-	    }
-	  }
-	}
+  # 	if ($link =~ m{ turquie-la-police }xms) {
+  # 	  if ($name eq 'p') {
+  # 	    if (my $first = $cur->firstChild()) {
+  # 	      next if ($first->nodeType() == 1 and
+  # 		       $first->localname() eq 'section');
+  # 	    }
+  # 	  }
+  # 	}
 
-	next if ($name eq 'p' and $cur->hasAttribute('class') and $cur->getAttribute('class') =~ m{ \b lire \b }xmsi);
+  # 	next if ($name eq 'p' and $cur->hasAttribute('class') and $cur->getAttribute('class') =~ m{ \b lire \b }xmsi);
 
-	next if ($name eq 'p' and $cur->hasAttribute('itemprop') and $cur->getAttribute('itemprop') =~ m{ \b author \b }xmsi);
+  # 	next if ($name eq 'p' and $cur->hasAttribute('itemprop') and $cur->getAttribute('itemprop') =~ m{ \b author \b }xmsi);
 
-	if ($name eq 'p' or $name =~ m{ h [1-4] }xms) {
-	  my $text = $cur->textContent();
+  # 	if ($name eq 'p' or $name =~ m{ h [1-4] }xms) {
+  # 	  my $text = $cur->textContent();
 
-	  unless ($text =~ m{ \A \s* \z }xms) {
-	    push(@{ $text_content }, [$name, $text]);
-	  }
-	} else {
-	  my @next = grep { $_->nodeType() == 1 } $cur->childNodes();
-	  push(@todo, @next);
-	}
-      }
+  # 	  if (%voc) {
+  # 	    my @words = split(/\s+/, $text);
 
-    }
+  # 	    my @filtered;
+  # 	    foreach my $w (@words) {
+  # 	      next if (length($w) <= 3);
 
-    return $text_content;
+  # 	      next if ($voc{$w});
 
-  },
-  'lejdd' => sub {
-    my ($link) = @_;
+  # 	      $w = lc($w);
+  # 	      $w =~ s{ \A .+ ' }{}xms;
+
+  # 	      next if ($voc{$w});
+
+  # 	      push($w, @filtered);
+  # 	    }
+
+  # 	    if (@filtered) {
+  # 	      my $text = join(' ', @filtered);
+  # 	      push(@{ $text_content }, $text);
+  # 	    }
+  # 	  } else {
+  # 	    push(@{ $text_content }, $text);
+  # 	  }
+
+  # 	} else {
+  # 	  my @next = grep { $_->nodeType() == 1 } $cur->childNodes();
+  # 	  push(@todo, @next);
+  # 	}
+  #     }
+  #   }
+
+  #   return $text_content;
+
+  # },
+
+  # 'slate' => sub {
+  #   my ($link) = @_;
+
+  #   my $text = '';
     
-    my $text = '';
-
-    my $content = $lwp_ua->get($link)->decoded_content;
-    my $dom = Mojo::DOM->new($content);
+  #   my $dom;
+  #   eval { $dom = XML::LibXML->load_html(
+  # 	     location => $link,
+  # 	     # encoding => 'iso-8859-1',
+  # 	     recover => 2,
+  # 	     suppress_warnings => 1,
+  # 	     )
+  #   };
+  #   if ($@) {
+  #     warn $@;
+  #     return $text;
+  #   }
     
-    # scan-content for short articles, article-content for longer ones
-    my $article_entries = $dom->find('div[id="scan-content"] p, div[id="article-content"] p, div[id="article-content"] h2');
+  #   unless ($dom) {
+  #     print STDERR "Unsuccessful parse\n";
+  #     return $text;
+  #   }
 
-    for my $e ($article_entries->each()) {
-      my $new_text = $e->all_text(0);
-
-      my $type = $e->type();
-      $text = join('', $text, $new_text, "\n");
-    }
-
-    return $text;
-    
-  },
-
-  'slate' => sub {
-    my ($link) = @_;
-
-    my $text = '';
-    
-    my $dom;
-    eval { $dom = XML::LibXML->load_html(
-  	     location => $link,
-  	     # encoding => 'iso-8859-1',
-  	     recover => 2,
-  	     suppress_warnings => 1,
-  	     )
-    };
-    if ($@) {
-      warn $@;
-      return $text;
-    }
-    
-    unless ($dom) {
-      print STDERR "Unsuccessful parse\n";
-      return $text;
-    }
-
-    my $text_content;
+  #   my $text_content;
 
 
-    my @article_nodes = $dom->findnodes('//div[@id="article_content" or @class="article_content" or @class="article_text"]');
+  #   my @article_nodes = $dom->findnodes('//div[@id="article_content" or @class="article_content" or @class="article_text"]');
 
-    print STDERR "Number of article nodes: ", scalar(@article_nodes), "\n";
+  #   print STDERR "Number of article nodes: ", scalar(@article_nodes), "\n";
 
-    foreach my $node (@article_nodes) {
+  #   foreach my $node (@article_nodes) {
 
-      my $iter = XML::LibXML::Iterator->new( $node );      
+  #     my $iter = XML::LibXML::Iterator->new( $node );      
 
-      $iter->iterate( 
-	sub {
-	  my ($iter, $cur)=@_;
+  #     $iter->iterate( 
+  # 	sub {
+  # 	  my ($iter, $cur)=@_;
 
 
-	  $iter->last() if ($cur->localname() and $cur->localname() eq 'div' and $cur->hasAttribute('class') and $cur->getAttribute('class') eq 'clearer');
+  # 	  $iter->last() if ($cur->localname() and $cur->localname() eq 'div' and $cur->hasAttribute('class') and $cur->getAttribute('class') eq 'clearer');
 
-	  $iter->nextNode() unless ($cur->nodeType() == 1);
+  # 	  $iter->nextNode() unless ($cur->nodeType() == 1);
 
-	  if ($cur->nodeType() == 1) {
-	    my $name = $cur->localname();
-	    if ($name eq 'p' or $name =~ m{ h [1-4] }xms) {
-	      my $text = $cur->textContent();
-	      $iter->nextNode() if ($text =~ m{ \A \s* \z }xms);
-	      push(@{ $text_content }, [$name, $text]);
-	    }
-	  }
-	} 
-	);
-    }
+  # 	  if ($cur->nodeType() == 1) {
+  # 	    my $name = $cur->localname();
+  # 	    if ($name eq 'p' or $name =~ m{ h [1-4] }xms) {
+  # 	      my $text = $cur->textContent();
+  # 	      $iter->nextNode() if ($text =~ m{ \A \s* \z }xms);
 
-    return $text_content;
+  # 	      if (%voc) {
+  # 		my @words = split(/\s+/, $text);
 
-  },
+  # 		my @filtered;
+  # 		foreach my $w (@words) {
+  # 		  next if (length($w) <= 3);
+		  
+  # 		  next if ($voc{$w});
+		  
+  # 		  $w = lc($w);
+  # 		  $w =~ s{ \A .+ ' }{}xms;
+		  
+  # 		  next if ($voc{$w});
+		  
+  # 		  push($w, @filtered);
+  # 		}
+		
+  # 		if (@filtered) {
+  # 		  my $text = join(' ', @filtered);
+  # 		  push(@{ $text_content }, $text);
+  # 		}
+  # 	      } else {
+  # 		push(@{ $text_content }, $text);
+  # 	      }
+  # 	    }
+  # 	  }
+  # 	} 
+  # 	);
+  #   }
 
-  'rue89' => sub {
-    my ($link) = @_;
+  #   return $text_content;
 
-    my $text = '';
+  # },
+
+  # 'rue89' => sub {
+  #   my ($link) = @_;
+
+  #   my $text = '';
     
     
-    my $dom;
-    eval { $dom = XML::LibXML->load_html(
-  	     location => $link,
-  	     # encoding => 'iso-8859-1',
-  	     recover => 2,
-  	     suppress_warnings => 1,
-  	     )
-    };
-    if ($@) {
-      warn $@;
-      return $text;
-    }
+  #   my $dom;
+  #   eval { $dom = XML::LibXML->load_html(
+  # 	     location => $link,
+  # 	     # encoding => 'iso-8859-1',
+  # 	     recover => 2,
+  # 	     suppress_warnings => 1,
+  # 	     )
+  #   };
+  #   if ($@) {
+  #     warn $@;
+  #     return $text;
+  #   }
     
-    unless ($dom) {
-      print STDERR "Unsuccessful parse\n";
-      return $text;
-    }
+  #   unless ($dom) {
+  #     print STDERR "Unsuccessful parse\n";
+  #     return $text;
+  #   }
 
-    my $text_content;
+  #   my $text_content;
 
-    my @div_nodes = $dom->findnodes('//div[@id="content"]');
+  #   my @div_nodes = $dom->findnodes('//div[@id="content"]');
 
-    print STDERR "Number of div nodes: ", scalar(@div_nodes), "\n";
+  #   print STDERR "Number of div nodes: ", scalar(@div_nodes), "\n";
 
-    if (@div_nodes) {
+  #   if (@div_nodes) {
 
-      my $iter = XML::LibXML::Iterator->new( $div_nodes[0] );      
+  #     my $iter = XML::LibXML::Iterator->new( $div_nodes[0] );      
     
-      $iter->iterate( 
-	sub {
-	  my ($iter, $cur)=@_;
+  #     $iter->iterate( 
+  # 	sub {
+  # 	  my ($iter, $cur)=@_;
 	    
-	  if ($cur->nodeType() == 1) {
-	    my $name = $cur->localname();
+  # 	  if ($cur->nodeType() == 1) {
+  # 	    my $name = $cur->localname();
 
-	    if ($name eq 'div') {
-	      if ($cur->hasAttribute('id') and $cur->getAttribute('id') eq 'commentaires') {
-		$iter->last();
-	      }
-	    }
+  # 	    if ($name eq 'div') {
+  # 	      if ($cur->hasAttribute('id') and $cur->getAttribute('id') eq 'commentaires') {
+  # 		$iter->last();
+  # 	      }
+  # 	    }
 
-	    if ($name eq 'p' or $name =~ m{ h [1-4] }xms) {
-	      my $text = $cur->textContent();
-	      unless ($text =~ m{ \A \s* \z }xms) {
-		push(@{ $text_content }, [$name, $text]);
-	      }
-	    }
-	  }
-	} 
-	);
-    }
+  # 	    if ($name eq 'p' or $name =~ m{ h [1-4] }xms) {
+  # 	      my $text = $cur->textContent();
+  # 	      unless ($text =~ m{ \A \s* \z }xms) {
+
+  # 		if (%voc) {
+  # 		  my @words = split(/\s+/, $text);
+
+  # 		  my @filtered;
+  # 		  foreach my $w (@words) {
+  # 		    next if (length($w) <= 3);
+		    
+  # 		    next if ($voc{$w});
+		    
+  # 		    $w = lc($w);
+  # 		    $w =~ s{ \A .+ ' }{}xms;
+		    
+  # 		    next if ($voc{$w});
+		    
+  # 		    push($w, @filtered);
+  # 		  }
+		  
+  # 		  if (@filtered) {
+  # 		    my $text = join(' ', @filtered);
+  # 		    push(@{ $text_content }, $text);
+  # 		  }
+  # 		} else {
+  # 		  push(@{ $text_content }, $text);
+  # 		}
+		
+  # 	      }
+  # 	    }
+  # 	  }
+  # 	} 
+  # 	);
+  #   }
   
-    return $text_content;
+  #   return $text_content;
   
-  },
+  # },
 
-  'presseurop' => sub {
-    my ($link) = @_;
+  # 'presseurop' => sub {
+  #   my ($link) = @_;
 
-    my $text_content;
+  #   my $text_content;
 
-    my $dom;
-    eval { $dom = XML::LibXML->load_html(
-  	     location => $link,
-  	     recover => 2,
-  	     suppress_warnings => 1,
-  	     )
-    };
-    if ($@) {
-      warn $@;
-      return $text_content;
-    }
+  #   my $dom;
+  #   eval { $dom = XML::LibXML->load_html(
+  # 	     location => $link,
+  # 	     recover => 2,
+  # 	     suppress_warnings => 1,
+  # 	     )
+  #   };
+  #   if ($@) {
+  #     warn $@;
+  #     return $text_content;
+  #   }
     
-    unless ($dom) {
-      print STDERR "Unsuccessful parse\n";
-      return $text_content;
-    }
+  #   unless ($dom) {
+  #     print STDERR "Unsuccessful parse\n";
+  #     return $text_content;
+  #   }
 
-    my @article_header = $dom->findnodes('//article/hgroup/h1');
+  #   my @article_header = $dom->findnodes('//article/hgroup/h1');
     
-    foreach my $node (@article_header) {
-      my $text = $node->textContent();
+  #   foreach my $node (@article_header) {
+  #     my $text = $node->textContent();
 
-      unless ($text =~ m{ \A \s* \z }xms) {
-	push(@{ $text_content }, ['h1', $text]);
-      }
-    }
+  #     unless ($text =~ m{ \A \s* \z }xms) {
 
-
-    my @article_nodes = $dom->findnodes('//article//div[@class="panel"]');
-
-    if (@article_nodes) {
-      my $iter = XML::LibXML::Iterator->new( $article_nodes[0] );      
-      $iter->iterate( 
-	sub {
-	  my ($iter, $cur)=@_;
+  # 	if (%voc) {
+  # 	  my @words = split(/\s+/, $text);
 	  
-	  if ($cur->nodeType() == 1) {
-	    my $name = $cur->localname();
+  # 	  my @filtered;
+  # 	  foreach my $w (@words) {
+  # 	    next if (length($w) <= 3);
 	    
-	    if ($name eq 'aside') {
-	      $iter->last();
-	    }
+  # 	    next if ($voc{$w});
+	    
+  # 	    $w = lc($w);
+  # 	    $w =~ s{ \A .+ ' }{}xms;
+	    
+  # 	    next if ($voc{$w});
+	    
+  # 	    push($w, @filtered);
+  # 	  }
+	  
+  # 	  if (@filtered) {
+  # 	    my $text = join(' ', @filtered);
+  # 	    push(@{ $text_content }, $text);
+  # 	  }
+  # 	} else {
+  # 	  push(@{ $text_content }, $text);
+  # 	}
+	
+  #     }
+  #   }
 
-	    if ($name eq 'p') {
-	      my $text = $cur->textContent();
-	      unless ($text =~ m{ \A \s* \z }xms) {
-		push(@{ $text_content }, [$name, $text]);
-	      }
-	    }
-	  }
-	} 
-	)
-    };
+
+  #   my @article_nodes = $dom->findnodes('//article//div[@class="panel"]');
+
+  #   if (@article_nodes) {
+  #     my $iter = XML::LibXML::Iterator->new( $article_nodes[0] );      
+  #     $iter->iterate( 
+  # 	sub {
+  # 	  my ($iter, $cur)=@_;
+	  
+  # 	  if ($cur->nodeType() == 1) {
+  # 	    my $name = $cur->localname();
+	    
+  # 	    if ($name eq 'aside') {
+  # 	      $iter->last();
+  # 	    }
+
+  # 	    if ($name eq 'p') {
+  # 	      my $text = $cur->textContent();
+  # 	      unless ($text =~ m{ \A \s* \z }xms) {
+
+  # 		if (%voc) {
+  # 		  my @words = split(/\s+/, $text);
+		  
+  # 		  my @filtered;
+  # 		  foreach my $w (@words) {
+  # 		    next if (length($w) <= 3);
+		    
+  # 		    next if ($voc{$w});
+		    
+  # 		    $w = lc($w);
+  # 		    $w =~ s{ \A .+ ' }{}xms;
+		    
+  # 		    next if ($voc{$w});
+		    
+  # 		    push($w, @filtered);
+  # 		  }
+		  
+  # 		  if (@filtered) {
+  # 		    my $text = join(' ', @filtered);
+  # 		    push(@{ $text_content }, $text);
+  # 		  }
+  # 		} else {
+  # 		  push(@{ $text_content }, $text);
+  # 		}
+		
+  # 	      }
+  # 	    }
+  # 	  }
+  # 	} 
+  # 	)
+  #   };
   
-    return $text_content;
-  },
+  #   return $text_content;
+  # },
 
-  'lequipe' => sub {
-    my ($link) = @_;
+  # 'lequipe' => sub {
+  #   my ($link) = @_;
 
-    my $text_content = [];
+  #   my $text_content = [];
 
-    my $dom;
+  #   my $dom;
 
-    my $content = $lwp_ua->get($link)->decoded_content;
+  #   my $content = $lwp_ua->get($link)->decoded_content;
 
-    eval { $dom = XML::LibXML->load_html(
-  	     string => $content,
-  	     recover => 2,
-  	     suppress_warnings => 1,
-  	     )
-    };
-    if ($@) {
-      warn $@;
-      return $text_content;
-    }
+  #   eval { $dom = XML::LibXML->load_html(
+  # 	     string => $content,
+  # 	     recover => 2,
+  # 	     suppress_warnings => 1,
+  # 	     )
+  #   };
+  #   if ($@) {
+  #     warn $@;
+  #     return $text_content;
+  #   }
     
-    unless ($dom) {
-      print STDERR "Unsuccessful parse\n";
-      return $text_content;
-    }
+  #   unless ($dom) {
+  #     print STDERR "Unsuccessful parse\n";
+  #     return $text_content;
+  #   }
 
-    my @article_nodes = $dom->findnodes('//article');
+  #   my @article_nodes = $dom->findnodes('//article');
 
-    foreach my $article (@article_nodes) {
+  #   foreach my $article (@article_nodes) {
 
-      my $iter = XML::LibXML::Iterator->new( $article );
+  #     my $iter = XML::LibXML::Iterator->new( $article );
+      
+  #     while ($iter->nextNode()) {
+	
+  # 	my $current = $iter->current();
+  # 	if ($current->nodeType() eq '1') {
+  # 	  my $name = $current->localname();
+  # 	  if ($name =~ m{ h[1-4] }xms) {
+  # 	    my $text = $current->textContent();
+  # 	    unless ($text =~ m{ \A \s* \z }xms) {
+  # 	      $text =~ s{ \s+ }{ }xms;
+	      
+  # 	      if (%voc) {
+  # 		my @words = split(/\s+/, $text);
+		
+  # 		my @filtered;
+  # 		foreach my $w (@words) {
+  # 		  next if (length($w) <= 3);
+		  
+  # 		  next if ($voc{$w});
+		  
+  # 		  $w = lc($w);
+  # 		  $w =~ s{ \A .+ ' }{}xms;
+		  
+  # 		  next if ($voc{$w});
+		  
+  # 		  push($w, @filtered);
+  # 		}
+		
+  # 		if (@filtered) {
+  # 		  my $text = join(' ', @filtered);
+  # 		  push(@{ $text_content }, $text);
+  # 		}
+  # 	      } else {
+  # 		push(@{ $text_content }, $text);
+  # 	      }
+  # 	    }
+  # 	  } elsif ($name eq 'div') {
+  # 	    if ($current->hasAttribute('class')) {
+  # 	      my $class = $current->getAttribute('class');
+  # 	      if ($class =~ m{ paragr \b }xms) {
+		
+  # 		my $text = $current->textContent();
+		
+  # 		if ($text and $text !~ m{ \A \s* \z }xms) {
+  # 		  if (%voc) {
+  # 		    my @words = split(/\s+/, $text);
+		    
+  # 		    my @filtered;
+  # 		    foreach my $w (@words) {
+  # 		      next if (length($w) <= 3);
+		      
+  # 		      next if ($voc{$w});
+		      
+  # 		      $w = lc($w);
+  # 		      $w =~ s{ \A .+ ' }{}xms;
+		      
+  # 		      next if ($voc{$w});
+		      
+  # 		      push($w, @filtered);
+  # 		    }
+		    
+  # 		    if (@filtered) {
+  # 		      my $text = join(' ', @filtered);
+  # 		      push(@{ $text_content }, $text);
+  # 		    }
+  # 		  } else {
+  # 		    push(@{ $text_content }, $text);
+  # 		  }
+		  
+  # 		}
+  # 	      } elsif ($current->hasAttribute('id')) {
+  # 		my $id = $current->getAttribute('id');
+  # 		last if ($id eq 'new_bloc_bas_breve');
+  # 		last if ($id eq 'ensavoirplus');
+  # 	      }
+  # 	    }
+  # 	  }
+  # 	}
+  #     }
 
-      while ($iter->nextNode()) {
+  #     return $text_content;
+  #   },
 
-	my $current = $iter->current();
-	if ($current->nodeType() eq '1') {
-	  my $name = $current->localname();
-	  if ($name =~ m{ h[1-4] }xms) {
-	    my $text = $current->textContent();
-	    unless ($text =~ m{ \A \s* \z }xms) {
-	      $text =~ s{ \s+ }{ }xms;
-	      push( @{ $text_content }, [ $name, $text ] );
-	    }
-	  } elsif ($name eq 'div') {
-	    if ($current->hasAttribute('class')) {
-	      my $class = $current->getAttribute('class');
-	      if ($class =~ m{ paragr \b }xms) {
-
-		my $text = $current->textContent();
-
-		if ($text and $text !~ m{ \A \s* \z }xms) {
-		  push (@{ $text_content }, [ 'p', $text ]);
-		}
-
-	      }
-	    } elsif ($current->hasAttribute('id')) {
-	      my $id = $current->getAttribute('id');
-	      last if ($id eq 'new_bloc_bas_breve');
-	      last if ($id eq 'ensavoirplus');
-	    }
-	  }
-	}
-      }
-    }
-
-    return $text_content;
-  },
-
-  'lalibre' => sub {
-    my ($link) = @_;
+  # 'lalibre' => sub {
+  #   my ($link) = @_;
     
-    my $text_content;
+  #   my $text_content;
     
-    my $dom;
+  #   my $dom;
     
-    my $content = $lwp_ua->get($link)->decoded_content;
+  #   my $content = $lwp_ua->get($link)->decoded_content;
     
-    eval { $dom = XML::LibXML->load_html(
-  	     string => $content,
-  	     recover => 2,
-  	     suppress_warnings => 1,
-  	     )
-    };
-    if ($@) {
-      warn $@;
-      return $text_content;
-    }
+  #   eval { $dom = XML::LibXML->load_html(
+  # 	     string => $content,
+  # 	     recover => 2,
+  # 	     suppress_warnings => 1,
+  # 	     )
+  #   };
+  #   if ($@) {
+  #     warn $@;
+  #     return $text_content;
+  #   }
     
-    unless ($dom) {
-      print STDERR "Unsuccessful parse\n";
-      return $text_content;
-    }
+  #   unless ($dom) {
+  #     print STDERR "Unsuccessful parse\n";
+  #     return $text_content;
+  #   }
 
-    my $header = ($dom->findnodes('//h1'))[1]->textContent();
-    $header =~ s{ \A \s+ }{}xms;
-    $header =~ s{ \s+ \z }{}xms;
-    $header =~ s{ \s+ }{ }xmsg;
-    $header =~ s{ \222 }{'}xmsg;
+  #   my $header = ($dom->findnodes('//h1'))[1]->textContent();
+  #   $header =~ s{ \A \s+ }{}xms;
+  #   $header =~ s{ \s+ \z }{}xms;
+  #   $header =~ s{ \s+ }{ }xmsg;
+  #   $header =~ s{ \222 }{'}xmsg;
     
-    unless ($header =~ m{ \A \s* \z }xms) {
-      push(@{ $text_content }, [ 'h1', $header ]);
-    }
+  #   unless ($header =~ m{ \A \s* \z }xms) {
+  #     push(@{ $text_content }, [ 'h1', $header ]);
+  #   }
 
-    my @hat = $dom->findnodes('//div[@id="articleHat"]');
+  #   my @hat = $dom->findnodes('//div[@id="articleHat"]');
 
-    foreach my $h_node (@hat) {
-      my $text = $h_node->textContent();
-      unless ($text =~ m{ \A \s* \z }xms) {
-	$text =~ s{ \A \s+ }{}xms;
-	$text =~ s{ \s+ \z }{}xms;
-	$text =~ s{ \s+ }{ }xmsg;
-	$text =~ s{ \222 }{'}xmsg;
-	push(@{ $text_content }, [ 'h2', $text ]);
-      }
-    }
+  #   foreach my $h_node (@hat) {
+  #     my $text = $h_node->textContent();
+  #     unless ($text =~ m{ \A \s* \z }xms) {
+  # 	$text =~ s{ \A \s+ }{}xms;
+  # 	$text =~ s{ \s+ \z }{}xms;
+  # 	$text =~ s{ \s+ }{ }xmsg;
+  # 	$text =~ s{ \222 }{'}xmsg;
 
-    my @article = $dom->findnodes('//div[@id="articleText"]/p');
+  # 	if (%voc) {
+  # 	  my @words = split(/\s+/, $text);
+	  
+  # 	  my @filtered;
+  # 	  foreach my $w (@words) {
+  # 	    next if (length($w) <= 3);
+	    
+  # 	    next if ($voc{$w});
+	    
+  # 	    $w = lc($w);
+  # 	    $w =~ s{ \A .+ ' }{}xms;
+	    
+  # 	    next if ($voc{$w});
+	    
+  # 	    push($w, @filtered);
+  # 	  }
+	  
+  # 	  if (@filtered) {
+  # 	    my $text = join(' ', @filtered);
+  # 	    push(@{ $text_content }, $text);
+  # 	  }
+  # 	} else {
+  # 	  push(@{ $text_content }, $text);
+  # 	}
+  #     }
+  #   }
 
-    foreach my $a_node (@article) {
+  #   my @article = $dom->findnodes('//div[@id="articleText"]/p');
 
-      my $text = $a_node->textContent();
-      $text =~ s{ \A \s+ }{}xms;
-      $text =~ s{ \s+ \z }{}xms;
-      $text =~ s{ \s+ }{ }xmsg;
-      $text =~ s{ \222 }{'}xmsg;
-      push(@{ $text_content }, [ 'p', $text ]);
+  #   foreach my $a_node (@article) {
 
-    }
+  #     my $text = $a_node->textContent();
+  #     $text =~ s{ \A \s+ }{}xms;
+  #     $text =~ s{ \s+ \z }{}xms;
+  #     $text =~ s{ \s+ }{ }xmsg;
+  #     $text =~ s{ \222 }{'}xmsg;
 
-    return $text_content;
-  },
+  #     if (%voc) {
+  # 	my @words = split(/\s+/, $text);
+	
+  # 	my @filtered;
+  # 	foreach my $w (@words) {
+  # 	  next if (length($w) <= 3);
+	  
+  # 	  next if ($voc{$w});
+	  
+  # 	  $w = lc($w);
+  # 	  $w =~ s{ \A .+ ' }{}xms;
+	  
+  # 	  next if ($voc{$w});
+	  
+  # 	  push($w, @filtered);
+  # 	}
+	
+  # 	if (@filtered) {
+  # 	  my $text = join(' ', @filtered);
+  # 	  push(@{ $text_content }, $text);
+  # 	}
+  #     } else {
+  # 	push(@{ $text_content }, $text);
+  #     }
+      
+  #   }
+
+  #   return $text_content;
+  # },
 
   'liberation' => sub {
     my ($link) = @_;
@@ -518,7 +773,15 @@ my %GETART_4_JOURNAL = (
     if ($header_el) {
       my $header = $header_el->textContent();
       unless ($header =~ m{ \A \s* \z }xms) {
-	push(@{ $text_content }, [ 'h1', $header ]);
+
+	if (%voc) {
+	  my $filtered_text = filter_with_vocabulary($header);
+	  if ($filtered_text) {
+	    push(@{ $text_content }, $filtered_text);
+	  }
+	} else {
+	  push(@{ $text_content }, $header);
+	}
       }
     } else {
       print STDERR "No h1 for $link\n";
@@ -534,15 +797,20 @@ my %GETART_4_JOURNAL = (
       $text =~ s{ \s+ \z }{}xms;
       $text =~ s{ \s+ }{ }xmsg;
       $text =~ s{ \222 }{'}xmsg;
-      push(@{ $text_content }, [ 'p', $text ]);
 
+      if (%voc) {
+	my $filtered_text = filter_with_vocabulary($text);
+	if ($filtered_text) {
+	  push(@{ $text_content }, $filtered_text);
+	}
+      } else {
+	push(@{ $text_content }, $text);
+      }
+      
     }
 
     return $text_content;
   },
-
-
-  
   );
 
 foreach my $file (@ARGV) {
@@ -576,34 +844,17 @@ foreach my $file (@ARGV) {
       next;
     }
 
-    my $dom = XML::LibXML->createDocument( "1.0", "UTF-8" );
-    my $html = $dom->createElement('html');
-    $html->setAttribute( 'xmnls', "http://www.w3.org/1999/xhtml" );
-    $html->setAttribute( 'xml:lang', 'fr' );
-    $dom->setDocumentElement($html);
-
-    my $head = $dom->createElement('head');
-    $html->addChild($head);
-
-    my $body = $dom->createElement('body');
-    
-    foreach my $text_ref (@{ $text }) {
-      my ($name, $content) = @{ $text_ref };
-      my $el = $dom->createElement($name);
-      $el->addChild($dom->createTextNode($content));
-      $body->addChild($el);
-    }
-
-    $html->addChild($body);
-    
     my $file_name = join('-', $journal, $count);
-    $file_name = join('.', $file_name, 'html');
+    $file_name = join('.', $file_name, 'txt');
     $file_name = join('/', $opts{dir_name}, $file_name);
-
-    print STDERR "Out file name: $file_name\n";
-
-    $dom->toFile($file_name, 1);
-
+    
+    if (open (my $fh, '>:encoding(utf-8)', $file_name)) {
+      print $fh join("\n", @{ $text }), "\n";
+      close $fh;
+    } else {
+      warn "Couldn't open $file_name for output: $!\n";
+    }
+    
     $count++;
 
   }

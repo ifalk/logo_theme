@@ -11,18 +11,32 @@ MALLET_HOME=/home/falk/mallet-2.0.7
 MALLET_CMD=${MALLET_HOME}/bin/mallet
 
 FEED_DIR=../onlineldavb
-FEED_JOURNALS=lalibre lejdd lemonde lequipe liberation presseurop rue89 slate
+# FEED_JOURNALS=lalibre lejdd lemonde lequipe liberation presseurop rue89 slate
+FEED_JOURNALS=liberation
 FEED_FILES=$(addprefix $(FEED_DIR)/,$(addsuffix _rss.pl, $(FEED_JOURNALS)))
 
-
-articles: ${SCRIPT_DIR}/make_mallet_input_texts.pl ${FEED_FILES} 
+articles: ${SCRIPT_DIR}/make_mallet_input_texts.pl ${FEED_FILES} vocabulary.pl 
 	mkdir articles ; \
 rm articles/* ; \
-perl $< --dir_name=articles ${FEED_FILES}
+perl $< --dir_name=articles --voc=vocabulary.pl ${FEED_FILES}
 
-SL_DIR=${LOGO_HOME}/VC/theme/stoplists
+articles.mallet: articles stoplist
+	${MALLET_CMD} import-dir --input articles --output $@ --keep-sequence --stoplist-file stoplist --token-regex "[\pL\p{Mn}\p{Nd}\p{Pc}]+"
+
+SL_DIR=${LOGO_HOME}/VC/theme/mallet/stoplists
 stoplist: ${SCRIPT_DIR}/make_stoplist.pl ${SL_DIR}/snowball.stoplist ${SL_DIR}/okki.stoplist ${SL_DIR}/gma.stoplist ${SL_DIR}/textalyser.stoplist ${SL_DIR}/context.stoplist ${SL_DIR}/mallet.extra-stoplist.fr ${SL_DIR}/mallet.stoplist
 	perl $< ${SL_DIR}/snowball.stoplist ${SL_DIR}/okki.stoplist ${SL_DIR}/gma.stoplist ${SL_DIR}/textalyser.stoplist ${SL_DIR}/context.stoplist ${SL_DIR}/mallet.extra-stoplist.fr ${SL_DIR}/mallet.stoplist > $@
+
+WS_FREQ_LIST=${LOGO_HOME}/VC/theme/top10000fr.txt
+
+vocabulary.pl: ${SCRIPT_DIR}/make_vocabulary.pl ${WS_FREQ_LIST} stoplist
+	perl $< --sl=stoplist --fl=${WS_FREQ_LIST} > $@
+
+
+
+
+100T-state.gz 100T-keys.txt 100T-composition.txt: articles.mallet
+	${MALLET_CMD} train-topics  --input articles.mallet --num-topics 100  --optimize-interval 10 --output-state 100T-state.gz --output-topic-keys 100T-keys.txt --output-doc-topics 100T-compostion.txt --num-top-words 20 --word-topic-counts-file 100T-word-topic-counts.txt --xml-topic-report 100T-xml-topic-report.xml --xml-topic-phrase-report 100T-xml-topic-phrase-report.xml
 
 lemonde.mallet: lemonde_articles stoplist
 	${MALLET_CMD} import-dir --input lemonde_articles --output $@ --keep-sequence --stoplist-file stoplist --token-regex "[\pL\p{Mn}\p{Nd}\p{Pc}]+"

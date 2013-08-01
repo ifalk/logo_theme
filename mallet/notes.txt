@@ -1,0 +1,108 @@
+Topic modeling with mallet
+===========================
+
+Data: Articles from RSS feeds of the following journals.
+
+lemonde: 898 articles
+liberation: 269
+lalibre: 1784
+presseurop: 690
+lejdd: 206
+rue89: 212
+slate: 74
+lequipe: 892
+-------------
+total: 4755
+
+I retrieved all the articles I could lay hands on and tried to keep
+only the journalistic content.
+
+The articles were preprocessed using a vocabulary. The vocabulary was
+built starting from a list of 10000 most frequent French words from
+Wordschatz. From these I removed those in various stoplists.
+
+The articles were split into words, special and punctuation characters
+removed. I only kept those words which were in the vocabulary. The
+idea was that these are the words which most probably carry meaning
+relevant to the topic modeling.
+
+From these documents I retrieved 100 topics using mallet. In this experiment I used a uniform Dirichlet (hyper)parameter alpha of 0.5. This means that we expect each topic to have equal weight. alpha_i < 1 => few topics per document.
+
+The results are basically three files:
+
+100T-compostion.txt: contains doc-nbr, file name, and pairs (topic nbr, proportion).
+
+Example row:
+
+0	lequipe-112.txt	86	0.11038961038961038	75	0.0324675324675324
+
+This means doc-nbr 0, which is in file lequipe-212.txt, has topic 86 as its principal topic (at about 11%) and topic 75 at 0.03%.
+
+The text of document 0 is:
+---------------------------
+match
+tenant titre logiquement qualifié finale victoire long répéter parquet victoire match espagnol causé rencontres reste équipes égalité devront mardi fermeté vendredi mené révolte terrain pourrait révéler
+----------------------------
+
+100T-keys.txt: lists the topics, ie. topic number, the Dirichlet parameter of the topic (always 0.5 in this case) and the 20 most relevant words of that topic
+
+Example row:
+
+86	0.5	finale face match victoire titre tournoi battu joueur remporté médaille samedi phase mondiale défaite compétition dimanche vainqueur bronze quarts 
+
+This is the most prominent topic for document 0 above.
+
+==================================================================
+
+When assuming that per document the probability to draw from a given topic is not uniform, the per document topic distribution may be fitted to the data. With mallet this is done using the --optimize-interval parameter (set to 10 for example).
+In this case the Dirichlet parameter shown in the keys file 
+is roughly proportional to the overall portion of the collection assigned to the topic.
+
+
+100T-hyper_opt-compostion.txt
+------------------------------
+
+Example row:
+
+0	lequipe-112.txt	58	0.3608880056165136	29	0.26484608200401216
+
+ie. doc#0 is assigned to topic 58 to 36.09% and to topic 29 to 26.84%
+
+100T-hyper_opt-keys.txt
+-----------------------
+58	0.06266	finale face match tour tournoi premier victoire dernier dimanche battu remporté titre compétition joueur vendredi équipes quarts samedi défaite 
+
+
+This is obviously very similar to topic 86 above obtained with the uniform Dirichlet prior.
+
+===========
+Other files
+===========
+
+100T-state.gz - words in corpus with their topic assignments
+100T-word-topic-counts.txt - sparse representation of topic-word assignments
+100T-xml-topic-phrase-report.xml - top words and phrases for each topic and any Dirichlet parameters in XML format
+100T-xml-topic-report.xml - the top words for each topic and any Dirichlet parameters in XML format
+
+=========================================================
+
+Further experiments
+---------------------
+
+symmetric alpha with hyper par optimisation -> NaN in log likelihood
+ 
+-------------------------------------------------
+
+symmetric alpha with uniform alpha = 0.5:
+
+0	lequipe-112.txt	49	0.12337662337662338	38	0.045454545454545456
+
+49	0.5	face finale match victoire tournoi titre joueur samedi joueurs vendredi compétition battu numéro dimanche remporté double phase quarts défaite 
+
+----------------------------------------------------
+
+symmetric alpha with uniform alpha = 0.1:
+
+0	lequipe-112.txt	53	0.3	94	0.1108108108108108
+
+53	0.1	finale face match tournoi victoire tour premier dernier compétition samedi battu titre remporté phase joueurs quarts dimanche mondiale vendredi 
